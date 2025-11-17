@@ -34,6 +34,10 @@ public static void main(String[] args) {
 
 
     }
+    
+
+```
+The result will be a JSON formatted as follows
 ```
 {
 "before": "pathBefore",
