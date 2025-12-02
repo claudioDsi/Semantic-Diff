@@ -552,7 +552,84 @@ public class Helpers {
     }
 
 
+    public static void extractJdkSqlSources(Path root, Path outputDir) throws IOException {
+        Path srcZip = findSrcZipUnder(root);
+        if (srcZip == null) {
+            throw new IOException("No lib/src.zip found under: " + root);
+        }
 
+        Files.createDirectories(outputDir);
+        System.out.println("Using src.zip: " + srcZip);
+
+        try (InputStream in = Files.newInputStream(srcZip);
+             ZipInputStream zis = new ZipInputStream(in)) {
+
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                String name = entry.getName();
+
+                // Allowed packages: just SQL
+                boolean isSqlFolder =
+                        name.startsWith("java/sql/")
+                                || name.startsWith("javax/sql/")
+                                || name.startsWith("jdk/sql/");
+
+                // Skip everything except SQL
+                if (!isSqlFolder) {
+                    continue;
+                }
+
+                // Destination under the output SQL folder:
+                Path destPath = outputDir.resolve(name).normalize();
+                checkZipSlip(outputDir, destPath);
+
+                // Ensure parent folders exist
+                if (entry.isDirectory()) {
+                    Files.createDirectories(destPath);
+                } else {
+                    Files.createDirectories(destPath.getParent());
+                    Files.copy(zis, destPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+
+                zis.closeEntry();
+            }
+        }
+
+        System.out.println("Extracted all SQL Java files into: " + outputDir);
+    }
+
+    /**
+     * Recursively search for a src.zip whose parent folder is named "lib".
+     * Returns the first match found, or null if none.
+     */
+    private static Path findSrcZipUnder(Path root) throws IOException {
+        if (!Files.isDirectory(root)) {
+            throw new IOException("Root is not a directory: " + root);
+        }
+
+        try (var stream = Files.walk(root)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().equalsIgnoreCase("src.zip"))
+                    .filter(p -> {
+                        Path parent = p.getParent();
+                        return parent != null &&
+                                parent.getFileName() != null &&
+                                parent.getFileName().toString().equalsIgnoreCase("lib");
+                    })
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
+
+    /** Simple Zip-Slip protection. */
+    private static void checkZipSlip(Path targetDir, Path dest) throws IOException {
+        Path normalizedTarget = targetDir.toAbsolutePath().normalize();
+        Path normalizedDest = dest.toAbsolutePath().normalize();
+        if (!normalizedDest.startsWith(normalizedTarget)) {
+            throw new IOException("Blocked Zip-Slip entry: " + dest);
+        }
+    }
 
 
 
